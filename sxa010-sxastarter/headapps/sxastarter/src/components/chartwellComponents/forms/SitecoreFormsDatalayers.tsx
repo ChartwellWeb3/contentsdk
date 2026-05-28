@@ -60,6 +60,12 @@ interface ResidenceData {
 }
 
 const useFormState = (sitecoreContext: any) => {
+  const route = sitecoreContext?.route;
+  const routeName = route?.name;
+  const routeTemplateName = route?.templateName as string | undefined;
+  const routePlaceholders = route?.placeholders as any;
+  const itemPath = sitecoreContext?.itemPath;
+
   const [formState, setFormState] = useState<FormState>({
     isPropertyPage: false,
     isAmIReady: false,
@@ -81,7 +87,7 @@ const useFormState = (sitecoreContext: any) => {
 
   useEffect(() => {
     const nextFormFlags = {
-      isPropertyPage: getIsPropertyPage(sitecoreContext.route?.templateName as string),
+      isPropertyPage: getIsPropertyPage(routeTemplateName as string),
       isAmIReady: getIsAmIReady(sitecoreContext),
       isItTime: getIsItTime(sitecoreContext),
       isASurvey: getIsASurvey(sitecoreContext),
@@ -113,7 +119,7 @@ const useFormState = (sitecoreContext: any) => {
       return hasChanged ? { ...prev, ...nextFormFlags } : prev;
     });
 
-    const placeholder = searchPlaceHoldersForComponent(sitecoreContext.route?.placeholders as any, "ResidenceObjData");
+    const placeholder = searchPlaceHoldersForComponent(routePlaceholders, "ResidenceObjData");
     const nextResidenceData = deStructureProps(placeholder);
 
     setResidenceData((prev) => {
@@ -129,19 +135,23 @@ const useFormState = (sitecoreContext: any) => {
 
       return nextResidenceData;
     });
-  }, [sitecoreContext.itemPath, sitecoreContext.route?.name, sitecoreContext.route?.placeholders, sitecoreContext.route?.templateName]);
+  }, [itemPath, routeName, routePlaceholders, routeTemplateName, sitecoreContext]);
 
   return { formState, setFormState, allResidenceData };
 };
 
 const useDataLayer = (pageContext: any, formState: FormState) => {
+  const sitecoreContext = pageContext?.sitecoreContext;
+  const route = sitecoreContext?.route;
+  const routeItemLanguage = route?.itemLanguage as string | undefined;
+
   const DataLayerPush = useCallback(
     (dlObject: any) => {
       const dataLayer = (window.dataLayer = window.dataLayer || []);
       const excludedEvents = ["request_resources", "add_to_cart", "begin_checkout", "purchase", "contact_us", "subscribe"];
 
       if (dlObject.event && !excludedEvents.includes(dlObject.event)) {
-        dlObject.page_lang = pageContext.sitecoreContext.route?.itemLanguage?.toUpperCase();
+        dlObject.page_lang = routeItemLanguage?.toUpperCase();
       } else {
         if (!dlObject.hasOwnProperty("page_lang_keep") && dlObject.page_lang_keep != "true") {
           delete dlObject.page_lang;
@@ -170,7 +180,7 @@ const useDataLayer = (pageContext: any, formState: FormState) => {
         dataLayer.push(dlDebug);
       }
     },
-    [pageContext.sitecoreContext.route?.itemLanguage, formState]
+    [formState, routeItemLanguage]
   );
 
   return { DataLayerPush };
@@ -254,6 +264,13 @@ const PURCHASE_FIRED_ATTR = "data-chartwell-purchase-fired";
 
 const SitecoreFormsDatalayers = () => {
   const pageContext = useSitecoreContext();
+  const sitecoreContext = pageContext?.sitecoreContext;
+  const route = sitecoreContext?.route;
+  const routeFields = route?.fields as any;
+  const routePlaceholders = route?.placeholders as any;
+  const routeItemLanguage = route?.itemLanguage as string | undefined;
+  const sitecoreLanguage = sitecoreContext?.language as string | undefined;
+
   const { formState, setFormState, allResidenceData } = useFormState(pageContext.sitecoreContext);
   const { DataLayerPush } = useDataLayer(pageContext, formState);
   const { setLocalStorageSubmitter, updateEvent } = useFormHandlers(formState, allResidenceData, DataLayerPush);
@@ -316,322 +333,325 @@ const SitecoreFormsDatalayers = () => {
     if (formState.isPropertyPage) {
       //const placeholder: any = pageContext.sitecoreContext.route?.placeholders["headless-header"]?.filter((comp: any) => comp.componentName === "ChartwellPropertyHeader");
       // const infoNode: any = placeholder?.[0]?.fields?.data?.item?.ancestors?.filter((ancestor: any) => ancestor && Object.keys(ancestor).length > 0)?.[0];
-      const placeholder = searchPlaceHoldersForComponent(pageContext.sitecoreContext.route?.placeholders as any, "ChartwellPropertyHeader");
+      const placeholder = searchPlaceHoldersForComponent(routePlaceholders, "ChartwellPropertyHeader");
       const infoNode: any = placeholder?.fields?.data?.ci?.parent;
       const nextYardiId = infoNode?.fields?.find((item: any) => item?.name === "PropertyID")?.jsonValue?.value || "";
       setFormState((prev) => (prev.propPageYardiID === nextYardiId ? prev : { ...prev, propPageYardiID: nextYardiId }));
     }
-  }, [formState.isPropertyPage, pageContext.sitecoreContext.route?.placeholders, setFormState]);
+  }, [formState.isPropertyPage, routePlaceholders, setFormState]);
 
   useEffect(() => {
     if (formState.propPageYardiID && formState.isFormLoaded) {
       (document.querySelector("[name='residenceofInterest1']") as HTMLInputElement)?.setAttribute("value", formState.propPageYardiID);
 
       const CareServicesAll = (allResidenceData as any).ResidenceData.combinedCareServices;
-      setLivingOptionsFieldValues(CareServicesAll, formState.propPageYardiID, allResidenceData, pageContext.sitecoreContext.language as string);
+      setLivingOptionsFieldValues(CareServicesAll, formState.propPageYardiID, allResidenceData, sitecoreLanguage as string);
     }
-  }, [formState.propPageYardiID, formState.isFormLoaded, allResidenceData, pageContext.sitecoreContext.language]);
+  }, [allResidenceData, formState.isFormLoaded, formState.propPageYardiID, sitecoreLanguage]);
 
   useEffect(() => {
-    if (formState.isFormLoaded) {
-      const form = document.querySelector("form[data-formid]");
-      const submitButton: HTMLButtonElement = (form as HTMLFormElement)?.querySelector("button.lp-flex-container.submit-button") as HTMLButtonElement;
-      let purchaseSubmitButton: HTMLButtonElement | null = null;
-      let purchaseClickHandler: (() => void) | null = null;
-      //we sanitize all form inputs
-      sanitizeInputs(form as HTMLFormElement);
+    if (!formState.isFormLoaded) {
+      return undefined;
+    }
 
-      //we need to set the redirect url
-      let tyURL = window.location.origin + window.location.pathname + (pageContext.sitecoreContext.language == "en" ? "/thank-you" : "/merci") + window.location.search;
-      if (formState.isBlogPage) {
-        tyURL = window.location.origin + (pageContext.sitecoreContext.language == "en" ? "/subscribe/thank-you" : "/fr/s-abonner-a-notre-infolettre/merci") + window.location.search;
-      }
-      const tyPageURLField = (form as HTMLFormElement)?.querySelector("input[name='thankYouPageURL']") as HTMLInputElement;
-      if (tyPageURLField?.value.includes("http")) {
-        (form as HTMLFormElement)?.setAttribute("data-success-redirect-url", tyPageURLField?.value);
-      } else {
-        (form as HTMLFormElement)?.setAttribute("data-success-redirect-url", tyURL);
-      }
+    const form = document.querySelector("form[data-formid]");
+    const submitButton: HTMLButtonElement = (form as HTMLFormElement)?.querySelector("button.lp-flex-container.submit-button") as HTMLButtonElement;
+    let purchaseSubmitButton: HTMLButtonElement | null = null;
+    let purchaseClickHandler: (() => void) | null = null;
 
-      //we need to handle date fields format: mm/dd/yyyy
-      const dateFields = (form as HTMLFormElement)?.querySelectorAll("input[type='date']");
-      const minDate = new Date(new Date().getTime() + 48 * 60 * 60 * 1000).toISOString().split("T")[0];
-      dateFields?.forEach((field: HTMLInputElement) => {
-        field.setAttribute("min", minDate);
-      });
+    //we sanitize all form inputs
+    sanitizeInputs(form as HTMLFormElement);
 
-      //we need to handle postal code error messages
-      submitButton?.addEventListener("click", () => {
-        const hasErrors = (form as HTMLFormElement)?.querySelectorAll(".form-input-error-field").length ? true : false;
-        if (hasErrors) {
-          const postalCodeField = (form as HTMLFormElement)?.querySelector("input[name='PostalCode']") as HTMLInputElement;
-          if (postalCodeField?.getAttribute("aria-invalid") == "true") {
-            const errorDiv = Array.from(document.querySelectorAll("div.global-input-error-message.form-input-error-message")).find((div) =>
-              div.textContent?.includes("Please match the requested format.")
-            );
+    //we need to set the redirect url
+    let tyURL = window.location.origin + window.location.pathname + (sitecoreLanguage == "en" ? "/thank-you" : "/merci") + window.location.search;
+    if (formState.isBlogPage) {
+      tyURL = window.location.origin + (sitecoreLanguage == "en" ? "/subscribe/thank-you" : "/fr/s-abonner-a-notre-infolettre/merci") + window.location.search;
+    }
+    const tyPageURLField = (form as HTMLFormElement)?.querySelector("input[name='thankYouPageURL']") as HTMLInputElement;
+    if (tyPageURLField?.value.includes("http")) {
+      (form as HTMLFormElement)?.setAttribute("data-success-redirect-url", tyPageURLField?.value);
+    } else {
+      (form as HTMLFormElement)?.setAttribute("data-success-redirect-url", tyURL);
+    }
 
-            if (errorDiv && pageContext.sitecoreContext.language == "fr") {
-              // Perform actions with errorDiv, e.g., set error message
-              const errorMsg = "Veuillez respecter le format requis.";
-              errorDiv.setAttribute("title", errorMsg);
-              errorDiv.innerHTML = `<span class="mdi mdi-alert-circle" aria-hidden="true"> ${errorMsg}</span> `;
-            }
+    //we need to handle date fields format: mm/dd/yyyy
+    const dateFields = (form as HTMLFormElement)?.querySelectorAll("input[type='date']");
+    const minDate = new Date(new Date().getTime() + 48 * 60 * 60 * 1000).toISOString().split("T")[0];
+    dateFields?.forEach((field: HTMLInputElement) => {
+      field.setAttribute("min", minDate);
+    });
+
+    //we need to handle postal code error messages
+    submitButton?.addEventListener("click", () => {
+      const hasErrors = (form as HTMLFormElement)?.querySelectorAll(".form-input-error-field").length ? true : false;
+      if (hasErrors) {
+        const postalCodeField = (form as HTMLFormElement)?.querySelector("input[name='PostalCode']") as HTMLInputElement;
+        if (postalCodeField?.getAttribute("aria-invalid") == "true") {
+          const errorDiv = Array.from(document.querySelectorAll("div.global-input-error-message.form-input-error-message")).find((div) =>
+            div.textContent?.includes("Please match the requested format.")
+          );
+
+          if (errorDiv && sitecoreLanguage == "fr") {
+            // Perform actions with errorDiv, e.g., set error message
+            const errorMsg = "Veuillez respecter le format requis.";
+            errorDiv.setAttribute("title", errorMsg);
+            errorDiv.innerHTML = `<span class="mdi mdi-alert-circle" aria-hidden="true"> ${errorMsg}</span> `;
           }
         }
-      });
+      }
+    });
 
-      //This is for personalization
-      const firstnameField = document.querySelector("input[name='firstName']") as HTMLInputElement;
-      firstnameField?.addEventListener("blur", () => {
+    //This is for personalization
+    const firstnameField = document.querySelector("input[name='firstName']") as HTMLInputElement;
+    firstnameField?.addEventListener("blur", () => {
+      setLocalStorageSubmitter();
+    });
+
+    if (formState.isAmIReady || formState.isItTime) {
+      setSurveyFields();
+    }
+
+    if (formState.hasAddressField) {
+      const mailingAddressField = document.querySelector("[name='mailStreetAddress']") as HTMLInputElement;
+      const form = mailingAddressField?.closest("form") as HTMLFormElement;
+      mailingAddressField.setAttribute("autocomplete", "off");
+      const config = getAddressCompleteConfig(sitecoreContext);
+      mailingAddressField?.addEventListener("input", () => {
+        getAddressSuggestions(config);
+      });
+      mailingAddressField &&
+        form.addEventListener("submit", (e: Event) => {
+          e.preventDefault(); // Always prevent default at the start
+          const cityField = document.querySelector("input[name='city']") as HTMLInputElement;
+          const stateProvField = document.querySelector("input[name='stateProv']") as HTMLInputElement;
+          const postalCodeField = document.querySelector("input[name='PostalCode']") as HTMLInputElement;
+
+          //if any of the fields are empty, we clear all the mailing address fields
+          if (mailingAddressField.value.trim().length == 0 || cityField.value.trim().length == 0 || stateProvField.value.trim().length == 0 || postalCodeField.value.trim().length == 0) {
+            cityField.value = "";
+            stateProvField.value = "";
+            postalCodeField.value = "";
+            mailingAddressField.value = "";
+          }
+          form.submit(); // Submit at the end
+        });
+    }
+    if (formState.isBookATour) {
+      const surnameField = document.querySelector("input[name='lastName']") as HTMLInputElement;
+      const emailField = document.querySelector("input[name='emailAddress']") as HTMLInputElement;
+      const postalCodeField = document.querySelector("input[name='PostalCode']") as HTMLInputElement;
+      const livingOptionsField = document.querySelector("[name='dropdownMenu']") as HTMLInputElement;
+      const isSiteCoreForm = document.querySelector("byoc-sitecore-form") as HTMLInputElement;
+
+      if (formState.isPropertyPage) {
+        waitForElement("byoc-sitecore-form form.content.lp-flex-container .component.global-text h1").then(() => {
+          const bookATourHeading: HTMLElement = document.querySelector("byoc-sitecore-form form.content.lp-flex-container .component.global-text h1") as HTMLElement;
+
+          bookATourHeading?.classList.add("line-height-1");
+          bookATourHeading?.setAttribute("id", "bookATourHeading");
+
+          // exception for le Jules Verne and setting of jules verne values
+          customizeJulesVerneResidence(formState);
+
+          const propName = (getPropertyDetailsByID(formState.propPageYardiID, allResidenceData) as any).fullName;
+          if (!bookATourHeading?.innerHTML.includes(shortenPropNames(propName)) && propName) {
+            if (bookATourHeading) {
+              bookATourHeading.innerHTML = `<span class="font-semibold">${bookATourHeading.innerHTML}</span> ${shortenPropNames(propName)}`;
+            }
+          }
+          const propAddress = document.createElement("address");
+          // let streetAddress = (getPropertyDetailsByID(formState.propPageYardiID, allResidenceData) as any).streetAddress;
+          // let streetAddress = document.location.href.includes("/le-jules-verne/condos-locatifs/planifier-une-visite")
+          //   ? (pageContext?.sitecoreContext?.route?.fields as any)?.["CustomAddress"]?.value
+          //   : (getLocalizedResidenceAddress(formState.propPageYardiID, allResidenceData, pageContext?.sitecoreContext?.route?.itemLanguage as string) as any)?.streetAddress;
+          let streetAddress =
+            getCustomLocalizedAddress(routeFields, document.location.href) ||
+            (getLocalizedResidenceAddress(formState.propPageYardiID, allResidenceData, routeItemLanguage as string) as any)?.streetAddress;
+
+          if (document.querySelectorAll("#propertyAddress").length == 0) {
+            document.querySelectorAll("#propertyAddress").forEach((el) => el.remove());
+            propAddress.classList.add("property-address", "not-italic", "text-ChartwellGrey", "font-semibold");
+            propAddress.setAttribute("id", "propertyAddress");
+            propAddress.innerHTML = streetAddress;
+            streetAddress = "";
+          }
+          if (bookATourHeading?.parentElement?.tagName == "DIV") bookATourHeading.after(propAddress);
+          else bookATourHeading?.parentElement?.after(propAddress);
+        });
+
+        if (formState.isFormLoaded && isSiteCoreForm && livingOptionsField && postalCodeField) {
+          const containerID = `${livingOptionsField.getAttribute("data-id")}`;
+          document.getElementById(containerID)?.classList.add("basis-1/2");
+        }
+      }
+
+      //WHEN USER ADDS SURNAME AND STARTS FILLING NEXT FIELD, FIRE EVENT
+      surnameField?.addEventListener("blur", () => {
+        updateEvent(surnameField, "add_to_cart");
         setLocalStorageSubmitter();
       });
 
-      if (formState.isAmIReady || formState.isItTime) {
-        setSurveyFields();
-      }
+      //WHEN USER ADDS EMAIL ADDRESS AND STARTS FILLING NEXT FIELD, FIRE EVENT
+      emailField?.addEventListener("blur", () => {
+        updateEvent(emailField, "begin_checkout");
+      });
 
-      if (formState.hasAddressField) {
-        const mailingAddressField = document.querySelector("[name='mailStreetAddress']") as HTMLInputElement;
-        const form = mailingAddressField?.closest("form") as HTMLFormElement;
-        mailingAddressField.setAttribute("autocomplete", "off");
-        const config = getAddressCompleteConfig(pageContext.sitecoreContext);
-        mailingAddressField?.addEventListener("input", () => {
-          getAddressSuggestions(config);
-        });
-        mailingAddressField &&
-          form.addEventListener("submit", (e: Event) => {
-            e.preventDefault(); // Always prevent default at the start
-            const cityField = document.querySelector("input[name='city']") as HTMLInputElement;
-            const stateProvField = document.querySelector("input[name='stateProv']") as HTMLInputElement;
-            const postalCodeField = document.querySelector("input[name='PostalCode']") as HTMLInputElement;
+      //when the postalcode field is updated, we also update the mailing postal code if available
+      postalCodeField?.addEventListener("blur", () => {
+        if (postalCodeField.getAttribute("aria-invalid") == "false") {
+          const mailingPostalCodeField = document.querySelector("[name='mailPostalCode']") as HTMLInputElement;
+          mailingPostalCodeField.value = postalCodeField.value;
+        }
+      });
 
-            //if any of the fields are empty, we clear all the mailing address fields
-            if (mailingAddressField.value.trim().length == 0 || cityField.value.trim().length == 0 || stateProvField.value.trim().length == 0 || postalCodeField.value.trim().length == 0) {
-              cityField.value = "";
-              stateProvField.value = "";
-              postalCodeField.value = "";
-              mailingAddressField.value = "";
-            }
-            form.submit(); // Submit at the end
-          });
-      }
-      if (formState.isBookATour) {
-        const surnameField = document.querySelector("input[name='lastName']") as HTMLInputElement;
-        const emailField = document.querySelector("input[name='emailAddress']") as HTMLInputElement;
-        const postalCodeField = document.querySelector("input[name='PostalCode']") as HTMLInputElement;
-        const livingOptionsField = document.querySelector("[name='dropdownMenu']") as HTMLInputElement;
-        const isSiteCoreForm = document.querySelector("byoc-sitecore-form") as HTMLInputElement;
-
-        if (formState.isPropertyPage) {
-          waitForElement("byoc-sitecore-form form.content.lp-flex-container .component.global-text h1").then(() => {
-            const bookATourHeading: HTMLElement = document.querySelector("byoc-sitecore-form form.content.lp-flex-container .component.global-text h1") as HTMLElement;
-
-            bookATourHeading?.classList.add("line-height-1");
-            bookATourHeading?.setAttribute("id", "bookATourHeading");
-
-            // exception for le Jules Verne and setting of jules verne values
-            customizeJulesVerneResidence(formState);
-
-            const propName = (getPropertyDetailsByID(formState.propPageYardiID, allResidenceData) as any).fullName;
-            if (!bookATourHeading?.innerHTML.includes(shortenPropNames(propName)) && propName) {
-              if (bookATourHeading) {
-                bookATourHeading.innerHTML = `<span class="font-semibold">${bookATourHeading.innerHTML}</span> ${shortenPropNames(propName)}`;
-              }
-            }
-            const propAddress = document.createElement("address");
-            // let streetAddress = (getPropertyDetailsByID(formState.propPageYardiID, allResidenceData) as any).streetAddress;
-            // let streetAddress = document.location.href.includes("/le-jules-verne/condos-locatifs/planifier-une-visite")
-            //   ? (pageContext?.sitecoreContext?.route?.fields as any)?.["CustomAddress"]?.value
-            //   : (getLocalizedResidenceAddress(formState.propPageYardiID, allResidenceData, pageContext?.sitecoreContext?.route?.itemLanguage as string) as any)?.streetAddress;
-            let streetAddress =
-              getCustomLocalizedAddress(pageContext?.sitecoreContext?.route?.fields, document.location.href) ||
-              (getLocalizedResidenceAddress(formState.propPageYardiID, allResidenceData, pageContext?.sitecoreContext?.route?.itemLanguage as string) as any)?.streetAddress;
-
-            if (document.querySelectorAll("#propertyAddress").length == 0) {
-              document.querySelectorAll("#propertyAddress").forEach((el) => el.remove());
-              propAddress.classList.add("property-address", "not-italic", "text-ChartwellGrey", "font-semibold");
-              propAddress.setAttribute("id", "propertyAddress");
-              propAddress.innerHTML = streetAddress;
-              streetAddress = "";
-            }
-            if (bookATourHeading?.parentElement?.tagName == "DIV") bookATourHeading.after(propAddress);
-            else bookATourHeading?.parentElement?.after(propAddress);
-          });
-
-          if (formState.isFormLoaded && isSiteCoreForm && livingOptionsField && postalCodeField) {
-            const containerID = `${livingOptionsField.getAttribute("data-id")}`;
-            document.getElementById(containerID)?.classList.add("basis-1/2");
-          }
+      const formEl = form as HTMLFormElement;
+      const handleBookATourPurchaseClick = () => {
+        if (formEl.getAttribute(PURCHASE_FIRED_ATTR) === "true") {
+          return;
         }
 
-        //WHEN USER ADDS SURNAME AND STARTS FILLING NEXT FIELD, FIRE EVENT
-        surnameField?.addEventListener("blur", () => {
-          updateEvent(surnameField, "add_to_cart");
-          setLocalStorageSubmitter();
-        });
+        let yardiID = (document.querySelector("[name='residenceofInterest1']") as HTMLInputElement)?.value;
+        const contactType = (document.querySelector("[name='contactType']") as HTMLInputElement)?.value == "SLF" ? "for myself" : "for a loved one";
+        const propertyDetails: any = yardiID ? getPropertyDetailsByID(yardiID, allResidenceData) : {};
+        const lvOpts = document.querySelector("[name='dropdownMenu']") as HTMLElement;
 
-        //WHEN USER ADDS EMAIL ADDRESS AND STARTS FILLING NEXT FIELD, FIRE EVENT
-        emailField?.addEventListener("blur", () => {
-          updateEvent(emailField, "begin_checkout");
-        });
-
-        //when the postalcode field is updated, we also update the mailing postal code if available
-        postalCodeField?.addEventListener("blur", () => {
-          if (postalCodeField.getAttribute("aria-invalid") == "false") {
-            const mailingPostalCodeField = document.querySelector("[name='mailPostalCode']") as HTMLInputElement;
-            mailingPostalCodeField.value = postalCodeField.value;
-          }
-        });
-
-        const formEl = form as HTMLFormElement;
-        const handleBookATourPurchaseClick = () => {
-          if (formEl.getAttribute(PURCHASE_FIRED_ATTR) === "true") {
-            return;
-          }
-
-          let yardiID = (document.querySelector("[name='residenceofInterest1']") as HTMLInputElement)?.value;
-          const contactType = (document.querySelector("[name='contactType']") as HTMLInputElement)?.value == "SLF" ? "for myself" : "for a loved one";
-          const propertyDetails: any = yardiID ? getPropertyDetailsByID(yardiID, allResidenceData) : {};
-          const lvOpts = document.querySelector("[name='dropdownMenu']") as HTMLElement;
-
-          //changing yardi id for memory care or assisted living
-          if (yardiID == "11280" && (lvOpts.getAttribute("data-value") == "MC" || lvOpts.getAttribute("data-value") == "AL")) {
-            (document.querySelector("[name='residenceofInterest1']") as HTMLInputElement).value = "11279";
-            yardiID = "11279";
-          }
-
-          yardiID = formState.isExpansionPage ? getExpansionPageYardiID(yardiID) : yardiID;
-          const hasErrors = formEl.querySelectorAll(".form-input-error-field").length ? true : false;
-
-          setLocalStorageSubmitter();
-
-          if (!hasErrors) {
-            formEl.setAttribute(PURCHASE_FIRED_ATTR, "true");
-
-            window.dataLayer = window.dataLayer || [];
-
-            //and set residence details for thank you page
-            localStorage.setItem("chartwellBookTourResidence", JSON.stringify({ resName: propertyDetails.name, resAddress: propertyDetails.streetAddress }));
-
-            DataLayerPush({
-              event: "purchase",
-              ecommerce: {
-                transaction_id: uuidv4(), // random number (must be unique each time)
-                value: 1, // static
-                currency: "CAD", // static
-                items: [
-                  {
-                    item_name: propertyDetails.name, // if user selected residence see excel for value, if not use 'corporate'
-                    //item_id: getIsPropertyPage(pageContext.sitecoreContext.route?.templateName as string) ? yardiID : "corporate", // yardi ID or static
-                    item_id: "corporate", // static
-                    price: "1.00", // static value
-                    item_variant: contactType, // values: for myself or for a loved one, based on user selection in form, if French use EN value
-                    item_category: propertyDetails.prov, // if user selected province see excel for value, if not use 'corporate'
-                    item_category2: propertyDetails.city, // if user selected city see excel for value, if not use 'corporate'
-                    item_category3: propertyDetails.lang, // Bilingual, "English" or "French" if unilingual otherwise if not use 'corporate'
-                    item_category4: propertyDetails.isPriorityProperty, // priorityProperty Yes/No
-                    item_category5: "web", //web or chatbot
-                    quantity: "1", // static
-                  },
-                ],
-              },
-            });
-          }
-        };
-
-        if (submitButton && !submitButton.hasAttribute(PURCHASE_LISTENER_ATTR)) {
-          submitButton.setAttribute(PURCHASE_LISTENER_ATTR, "true");
-          submitButton.addEventListener("click", handleBookATourPurchaseClick);
-          purchaseSubmitButton = submitButton;
-          purchaseClickHandler = handleBookATourPurchaseClick;
+        //changing yardi id for memory care or assisted living
+        if (yardiID == "11280" && (lvOpts.getAttribute("data-value") == "MC" || lvOpts.getAttribute("data-value") == "AL")) {
+          (document.querySelector("[name='residenceofInterest1']") as HTMLInputElement).value = "11279";
+          yardiID = "11279";
         }
-      }
-      if (formState.isContactUs) {
-        waitForElement("button.lp-flex-container.submit-button").then(() => {
-          getSiteCoreFormStyling();
-          const submitBtn = document.querySelector("button.lp-flex-container.submit-button") as HTMLButtonElement;
-          const frm = document.querySelector("form[data-formid]") as HTMLFormElement;
-          (submitBtn as HTMLButtonElement).addEventListener("click", () => {
-            const hasErrors = (frm as HTMLFormElement).querySelectorAll(".form-input-error-field").length ? true : false;
-            const forWhoField = document.querySelector("[name='type']") as HTMLInputElement;
-            const forWho = forWhoField?.getAttribute("data-value") == "SLF" ? "for myself" : forWhoField?.getAttribute("data-value") == "CHI" ? "for a loved one" : "";
-            if (!hasErrors) {
-              const dl: any = {
-                event: "contact_us",
-                // pageContent: "corporate", //static
-                // page_lang: pageContext.sitecoreContext.language == "en" ? "EN" : "FR",
-                // pageCat: "corporate", // static
-                // pageType: "contact us thank you", // static
-                product_code: "corporate", // static
-                residence: forWho,
-                reasons: formState.isAmIReady || formState.isItTime ? "survey" : (document.querySelector("[name='subject']") as HTMLInputElement).value,
-              };
-              DataLayerPush(dl);
-            }
+
+        yardiID = formState.isExpansionPage ? getExpansionPageYardiID(yardiID) : yardiID;
+        const hasErrors = formEl.querySelectorAll(".form-input-error-field").length ? true : false;
+
+        setLocalStorageSubmitter();
+
+        if (!hasErrors) {
+          formEl.setAttribute(PURCHASE_FIRED_ATTR, "true");
+
+          window.dataLayer = window.dataLayer || [];
+
+          //and set residence details for thank you page
+          localStorage.setItem("chartwellBookTourResidence", JSON.stringify({ resName: propertyDetails.name, resAddress: propertyDetails.streetAddress }));
+
+          DataLayerPush({
+            event: "purchase",
+            ecommerce: {
+              transaction_id: uuidv4(), // random number (must be unique each time)
+              value: 1, // static
+              currency: "CAD", // static
+              items: [
+                {
+                  item_name: propertyDetails.name, // if user selected residence see excel for value, if not use 'corporate'
+                  //item_id: getIsPropertyPage(pageContext.sitecoreContext.route?.templateName as string) ? yardiID : "corporate", // yardi ID or static
+                  item_id: "corporate", // static
+                  price: "1.00", // static value
+                  item_variant: contactType, // values: for myself or for a loved one, based on user selection in form, if French use EN value
+                  item_category: propertyDetails.prov, // if user selected province see excel for value, if not use 'corporate'
+                  item_category2: propertyDetails.city, // if user selected city see excel for value, if not use 'corporate'
+                  item_category3: propertyDetails.lang, // Bilingual, "English" or "French" if unilingual otherwise if not use 'corporate'
+                  item_category4: propertyDetails.isPriorityProperty, // priorityProperty Yes/No
+                  item_category5: "web", //web or chatbot
+                  quantity: "1", // static
+                },
+              ],
+            },
           });
-        });
-      }
-      if (formState.isResourcePage) {
-        submitButton?.addEventListener("click", () => {
-          const hasErrors = (form as HTMLFormElement).querySelectorAll(".form-input-error-field").length ? true : false;
-          const forWhoField = document.querySelector("[name='yourselforLovedone']") as HTMLInputElement;
-          const forWho = forWhoField?.getAttribute("data-value") == "SLF" ? "for myself" : forWhoField?.getAttribute("data-value") == "CHI" ? "for a loved one" : "";
-          if (!hasErrors) {
-            DataLayerPush({
-              event: "request_resources",
-              // pageContent: "resources",
-              // pageType: "resources thank you",
-              residence: forWho,
-              // pageCat: "corporate",
-              // page_lang: pageContext.sitecoreContext.language == "en" ? "EN" : "FR",
-            });
-          }
-        });
-      }
-      if (formState.isSubscribePage) {
-        getSiteCoreFormStyling();
-      }
-      if (formState.isOpenHousePage) {
-        submitButton?.addEventListener("click", () => {
-          const hasErrors = (form as HTMLFormElement).querySelectorAll(".form-input-error-field").length ? true : false;
-          if (!hasErrors) {
-            const contactType = (document.querySelector("[name='contactType']") as HTMLInputElement)?.value == "SLF" ? "for myself" : "for a loved one";
-
-            DataLayerPush({
-              event: "open_house",
-              page_lang: pageContext.sitecoreContext.language == "en" ? "EN" : "FR",
-              residence: contactType, // user selection of "who will be leaving.."  - if French use EN value; write values as you do in the 'request_resources' or contact_us event
-            });
-          }
-        });
-      }
-      if (formState.isBlogPage) {
-        //for the blog card subscribe form in helpful resources
-        const blogCardForm = document.querySelector("#eloquaForm form") as HTMLFormElement;
-        const blogCardFormSubmit = blogCardForm?.querySelector("input[type='Submit']") as HTMLInputElement;
-        blogCardFormSubmit?.addEventListener("click", () => {
-          setTimeout(() => {
-            const hasErrors = document.querySelectorAll("[data-valid='false']").length ? true : false;
-            if (!hasErrors) {
-              DataLayerPush({
-                event: "subscribe",
-                page_lang: pageContext.sitecoreContext.language == "en" ? "EN" : "FR",
-                page_lang_keep: true,
-              });
-            }
-          }, 500);
-        });
-      }
-
-      return () => {
-        if (purchaseSubmitButton && purchaseClickHandler) {
-          purchaseSubmitButton.removeEventListener("click", purchaseClickHandler);
-          purchaseSubmitButton.removeAttribute(PURCHASE_LISTENER_ATTR);
         }
       };
+
+      if (submitButton && !submitButton.hasAttribute(PURCHASE_LISTENER_ATTR)) {
+        submitButton.setAttribute(PURCHASE_LISTENER_ATTR, "true");
+        submitButton.addEventListener("click", handleBookATourPurchaseClick);
+        purchaseSubmitButton = submitButton;
+        purchaseClickHandler = handleBookATourPurchaseClick;
+      }
     }
+    if (formState.isContactUs) {
+      waitForElement("button.lp-flex-container.submit-button").then(() => {
+        getSiteCoreFormStyling();
+        const submitBtn = document.querySelector("button.lp-flex-container.submit-button") as HTMLButtonElement;
+        const frm = document.querySelector("form[data-formid]") as HTMLFormElement;
+        (submitBtn as HTMLButtonElement).addEventListener("click", () => {
+          const hasErrors = (frm as HTMLFormElement).querySelectorAll(".form-input-error-field").length ? true : false;
+          const forWhoField = document.querySelector("[name='type']") as HTMLInputElement;
+          const forWho = forWhoField?.getAttribute("data-value") == "SLF" ? "for myself" : forWhoField?.getAttribute("data-value") == "CHI" ? "for a loved one" : "";
+          if (!hasErrors) {
+            const dl: any = {
+              event: "contact_us",
+              // pageContent: "corporate", //static
+              // page_lang: pageContext.sitecoreContext.language == "en" ? "EN" : "FR",
+              // pageCat: "corporate", // static
+              // pageType: "contact us thank you", // static
+              product_code: "corporate", // static
+              residence: forWho,
+              reasons: formState.isAmIReady || formState.isItTime ? "survey" : (document.querySelector("[name='subject']") as HTMLInputElement).value,
+            };
+            DataLayerPush(dl);
+          }
+        });
+      });
+    }
+    if (formState.isResourcePage) {
+      submitButton?.addEventListener("click", () => {
+        const hasErrors = (form as HTMLFormElement).querySelectorAll(".form-input-error-field").length ? true : false;
+        const forWhoField = document.querySelector("[name='yourselforLovedone']") as HTMLInputElement;
+        const forWho = forWhoField?.getAttribute("data-value") == "SLF" ? "for myself" : forWhoField?.getAttribute("data-value") == "CHI" ? "for a loved one" : "";
+        if (!hasErrors) {
+          DataLayerPush({
+            event: "request_resources",
+            // pageContent: "resources",
+            // pageType: "resources thank you",
+            residence: forWho,
+            // pageCat: "corporate",
+            // page_lang: pageContext.sitecoreContext.language == "en" ? "EN" : "FR",
+          });
+        }
+      });
+    }
+    if (formState.isSubscribePage) {
+      getSiteCoreFormStyling();
+    }
+    if (formState.isOpenHousePage) {
+      submitButton?.addEventListener("click", () => {
+        const hasErrors = (form as HTMLFormElement).querySelectorAll(".form-input-error-field").length ? true : false;
+        if (!hasErrors) {
+          const contactType = (document.querySelector("[name='contactType']") as HTMLInputElement)?.value == "SLF" ? "for myself" : "for a loved one";
+
+          DataLayerPush({
+            event: "open_house",
+            page_lang: sitecoreLanguage == "en" ? "EN" : "FR",
+            residence: contactType, // user selection of "who will be leaving.."  - if French use EN value; write values as you do in the 'request_resources' or contact_us event
+          });
+        }
+      });
+    }
+    if (formState.isBlogPage) {
+      //for the blog card subscribe form in helpful resources
+      const blogCardForm = document.querySelector("#eloquaForm form") as HTMLFormElement;
+      const blogCardFormSubmit = blogCardForm?.querySelector("input[type='Submit']") as HTMLInputElement;
+      blogCardFormSubmit?.addEventListener("click", () => {
+        setTimeout(() => {
+          const hasErrors = document.querySelectorAll("[data-valid='false']").length ? true : false;
+          if (!hasErrors) {
+            DataLayerPush({
+              event: "subscribe",
+              page_lang: sitecoreLanguage == "en" ? "EN" : "FR",
+              page_lang_keep: true,
+            });
+          }
+        }, 500);
+      });
+    }
+
+    return () => {
+      if (purchaseSubmitButton && purchaseClickHandler) {
+        purchaseSubmitButton.removeEventListener("click", purchaseClickHandler);
+        purchaseSubmitButton.removeAttribute(PURCHASE_LISTENER_ATTR);
+      }
+    };
   }, [
-    pageContext.sitecoreContext.language,
+    sitecoreLanguage,
     DataLayerPush,
     allResidenceData,
     formState.isBookATour,
@@ -650,5 +670,7 @@ const SitecoreFormsDatalayers = () => {
     formState.isExpansionPage,
     formState.hasAddressField,
   ]);
+
+  return null;
 };
 export default SitecoreFormsDatalayers;

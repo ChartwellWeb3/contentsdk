@@ -27,6 +27,14 @@ declare global {
 
 export const ChartwellDataLayer = () => {
   const { sitecoreContext } = useSitecoreContext();
+  const route = sitecoreContext?.route;
+  const routeFields = route?.fields as any;
+  const routePlaceholders = route?.placeholders as any;
+  const routeTemplateName = route?.templateName as string | undefined;
+  const routeName = route?.name;
+  const sitecoreLanguage = sitecoreContext?.language;
+  const sitecoreItemPath = sitecoreContext?.itemPath;
+  const sitecoreItemId = sitecoreContext?.itemId;
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const provinces = [
@@ -38,7 +46,7 @@ export const ChartwellDataLayer = () => {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const DataLayer: any = {};
-  const isPropertyPage = getIsPropertyPage(sitecoreContext.route?.templateName as string);
+  const isPropertyPage = getIsPropertyPage(routeTemplateName as string);
   const isThankYouPage = getIsThankYouPage(sitecoreContext);
   const isAmIReady = getIsAmIReady(sitecoreContext);
   const isItTime = getIsItTime(sitecoreContext);
@@ -50,11 +58,7 @@ export const ChartwellDataLayer = () => {
   const isOpenHousePage = getIsOpenHousePage(sitecoreContext);
   const isBlogPage = getIsBlogPage(sitecoreContext);
 
-  // As part of the ContentSDK migration context object will be available under page?.layout?.sitecore?.context where page is the prop passed to the component.
-  //  Example -   const { page } = useSitecore(); This hook grants acсess to the current Sitecore page and api.
-  //  const sitecoreContext = page?.layout?.sitecore?.context;
-
-  const currLang = (sitecoreContext?.language ?? sitecoreContext.route?.itemLanguage)?.toUpperCase();
+  const currLang = (sitecoreLanguage ?? route?.itemLanguage)?.toUpperCase();
 
   const [corporateDataLayersFired, setCorporateDataLayersFired] = useState(false);
 
@@ -111,23 +115,22 @@ export const ChartwellDataLayer = () => {
     Obj.city = "";
     Obj.isBilingual = "";
     Obj.isPriorityProperty = "";
-    if (sitecoreContext.route?.templateName === "PropertyPage") {
-      Obj.pID = (sitecoreContext.route?.fields?.PropertyID as any).value;
+    if (routeTemplateName === "PropertyPage") {
+      Obj.pID = (routeFields?.PropertyID as any).value;
       Obj.propertyName = normalize(
-        (sitecoreContext.route?.fields?.["CustomDataLayerPropertyName"] as any).value
-          ? (sitecoreContext.route?.fields?.["CustomDataLayerPropertyName"] as any).value
-          : (sitecoreContext.route?.fields?.["Property Name"] as any).value
+        (routeFields?.["CustomDataLayerPropertyName"] as any).value
+          ? (routeFields?.["CustomDataLayerPropertyName"] as any).value
+          : (routeFields?.["Property Name"] as any).value
       );
-      const prov: any = sitecoreContext.route?.fields?.Province;
+      const prov: any = routeFields?.Province;
       Obj.province = normalize(prov?.[0].fields["Province Abbreviation"]?.value);
-      const cityfield: any = sitecoreContext.route?.fields?.City;
+      const cityfield: any = routeFields?.City;
       Obj.city = normalize(cityfield?.[0]?.fields["City Name"]?.value);
-      Obj.isBilingual = (sitecoreContext.route?.fields?.Bilingual as any)?.value;
-      Obj.isPriorityProperty = (sitecoreContext.route?.fields?.isPriorityProperty as any)?.value;
+      Obj.isBilingual = (routeFields?.Bilingual as any)?.value;
+      Obj.isPriorityProperty = (routeFields?.isPriorityProperty as any)?.value;
     } else {
       const params = new URLSearchParams(document.location.search);
-      const placeholders = sitecoreContext.route?.placeholders as any;
-      const placeholder = searchPlaceHoldersForComponent(placeholders, "PropertyHeaderNavigation");
+      const placeholder = searchPlaceHoldersForComponent(routePlaceholders, "PropertyHeaderNavigation");
       const infoNode: any = placeholder?.fields?.data?.item?.ancestors?.filter((ancestor: any) => ancestor && Object.keys(ancestor).length > 0)?.[0];
       Obj.pID = (infoNode?.contextParentPropertyId as any)?.value;
       const customName = (infoNode?.customDataLayerPropertyName as any)?.value;
@@ -139,13 +142,13 @@ export const ChartwellDataLayer = () => {
       Obj.isPriorityProperty = infoNode?.isPriorityProperty?.boolValue;
     }
     return Obj;
-  }, [provinces, sitecoreContext.route?.fields, sitecoreContext.route?.placeholders, sitecoreContext.route?.templateName]);
+  }, [provinces, routeFields, routePlaceholders, routeTemplateName]);
 
   //datalayer state changes
   const updateDataLayer = useCallback(async () => {
     const params = new URLSearchParams(document.location.search);
 
-    if (!isBookATour && !isContactUs && sitecoreContext.route?.name != "subscribe" && !isThankYouPage) {
+    if (!isBookATour && !isContactUs && routeName != "subscribe" && !isThankYouPage) {
       //defaults
       DataLayer.page_lang = currLang;
       DataLayer.pageContent = "corporate";
@@ -210,7 +213,7 @@ export const ChartwellDataLayer = () => {
       DataLayerPush(dlChanges);
     };
 
-    if (sitecoreContext.route?.templateName === "Page" || sitecoreContext.route?.templateName === "ResourceLandingPage") {
+    if (routeTemplateName === "Page" || routeTemplateName === "ResourceLandingPage") {
       //cleanup
       DataLayer.residence_code = null;
       DataLayer.residence_imp = null;
@@ -224,7 +227,7 @@ export const ChartwellDataLayer = () => {
       delete DataLayer.event;
       delete DataLayer.ecommerce;
 
-      if (sitecoreContext.route?.name === "home") {
+      if (routeName === "home") {
         DataLayer.pageContent = "home";
         DataLayer.pageCat = "home";
         DataLayer.pageType = "home";
@@ -268,7 +271,7 @@ export const ChartwellDataLayer = () => {
       }
 
       //search results pages
-      if (sitecoreContext.route?.name.toString().includes("search")) {
+      if (routeName?.toString().includes("search")) {
         const removeFromParams = new RegExp(/^[a-z]+=/gm);
         const dlChanges: any = {};
         dlChanges.page_lang = currLang;
@@ -296,7 +299,7 @@ export const ChartwellDataLayer = () => {
       }
 
       //subscribe
-      if (sitecoreContext.route?.name === "subscribe") {
+      if (routeName === "subscribe") {
         const dlChanges: any = {};
         dlChanges.pageCat = "corporate";
         dlChanges.pageContent = "corporate";
@@ -316,7 +319,7 @@ export const ChartwellDataLayer = () => {
           DataLayerPush(dlChanges);
         } else {
           //if these are surveys, then we need to do either corp book a tour data layers or corp contact us.
-          if (sitecoreContext.itemPath?.toString().includes("/outcome-not-time") || sitecoreContext.itemPath?.toString().includes("/resultat-pas-le-moment")) {
+          if (sitecoreItemPath?.toString().includes("/outcome-not-time") || sitecoreItemPath?.toString().includes("/resultat-pas-le-moment")) {
             doCorpContactUsThankYouDatalayers();
           } else {
             doCorporateBookATourThankYouDatalayers();
@@ -341,7 +344,7 @@ export const ChartwellDataLayer = () => {
       }
     }
 
-    if (sitecoreContext.route?.templateName === "CityLandingPage") {
+    if (routeTemplateName === "CityLandingPage") {
       //cleanup
       DataLayer.residence_code = null;
       DataLayer.residence_imp = null;
@@ -356,32 +359,32 @@ export const ChartwellDataLayer = () => {
     }
 
     //blog pages
-    if (sitecoreContext.route?.templateName?.toLowerCase().includes("blog")) {
+    if (routeTemplateName?.toLowerCase().includes("blog")) {
       const dlChanges: any = {};
       dlChanges.event = "blog_view";
       dlChanges.pageContent = "blog";
       dlChanges.pageCat = "corporate";
       dlChanges.pageType = "blog";
       dlChanges.page_lang = currLang;
-      if (sitecoreContext.route?.templateName === "BlogCategory") {
-        const fields: any = sitecoreContext.route?.fields;
+      if (routeTemplateName === "BlogCategory") {
+        const fields: any = routeFields;
         dlChanges.blog_category = fields["Category Name"] && fields["Category Name"].value;
         dlChanges.blog_type = "";
       }
-      if (sitecoreContext.route?.templateName === "BlogHome") {
+      if (routeTemplateName === "BlogHome") {
         dlChanges.blog_category = "home";
         dlChanges.blog_type = "";
       }
-      if (sitecoreContext.route?.templateName === "BlogArticle") {
+      if (routeTemplateName === "BlogArticle") {
         //ancestors is already available in breadcrumbs
-        const breadcrumb: any = searchPlaceHoldersForComponent(sitecoreContext.route?.placeholders as any, "MetaSeoBlock");
-        const language = breadcrumb?.fields?.data?.ci?.languages.filter((e: any) => e.language.name == sitecoreContext.language);
+        const breadcrumb: any = searchPlaceHoldersForComponent(routePlaceholders, "MetaSeoBlock");
+        const language = breadcrumb?.fields?.data?.ci?.languages.filter((e: any) => e.language.name == sitecoreLanguage);
         const category: any = language[0].ancestors[0].field.jsonValue.value;
         // const tmp = document.createElement("div");
         // tmp.innerHTML = JSON.stringify(language);
         // document.querySelector("body")?.appendChild(tmp);
 
-        const blogArticle: any = searchPlaceHoldersForComponent(sitecoreContext.route?.placeholders as any, "BlogArticle");
+        const blogArticle: any = searchPlaceHoldersForComponent(routePlaceholders, "BlogArticle");
         const articleLength: any = blogArticle?.fields?.Content?.value
           ? (blogArticle?.fields?.Content?.value + blogArticle?.fields["Second Content Block"].value).replace(/(<([^>]+)>)/gi, "").split(" ").length
           : 0;
@@ -453,7 +456,7 @@ export const ChartwellDataLayer = () => {
               item_variant: "", // leave empty
               item_category: province, // see excel
               item_category2: city, // see excel
-              item_category3: isBilingual ? "Bilingual" : sitecoreContext.language == "en" ? "English" : "French", // static
+              item_category3: isBilingual ? "Bilingual" : sitecoreLanguage == "en" ? "English" : "French", // static
               item_category4: isPriorityProperty ? "Yes" : "No", // see excel
               item_category5: "web",
               quantity: "1", // static
@@ -492,12 +495,12 @@ export const ChartwellDataLayer = () => {
     isResourcePage,
     isSubscribePage,
     isThankYouPage,
-    sitecoreContext.itemPath,
-    sitecoreContext.language,
-    sitecoreContext.route?.fields,
-    sitecoreContext.route?.name,
-    sitecoreContext.route?.placeholders,
-    sitecoreContext.route?.templateName,
+    routeFields,
+    routeName,
+    routePlaceholders,
+    routeTemplateName,
+    sitecoreItemPath,
+    sitecoreLanguage,
   ]);
 
   // const handleChatBotStateChange = (event: any) => {
@@ -533,7 +536,7 @@ export const ChartwellDataLayer = () => {
 
   // useEffect(() => {
   //   handleChatBotStateChange({detail: {isOpen: isChatBotOpen}});
-  // }, [sitecoreContext.route?.templateName]);
+  // }, [routeTemplateName]);
 
   //update datalayer when navigating
   useEffect(() => {
@@ -571,7 +574,7 @@ export const ChartwellDataLayer = () => {
                 item_variant: "", // leave empty
                 item_category: normalize(province), // see excel
                 item_category2: normalize(city), // see excel
-                item_category3: isBilingual ? "Bilingual" : sitecoreContext.language == "en" ? "English" : "French", // static
+                item_category3: isBilingual ? "Bilingual" : sitecoreLanguage == "en" ? "English" : "French", // static
                 item_category4: isPriorityProperty ? "Yes" : "No", // see excel
                 item_category5: "web",
                 quantity: "1", // static
@@ -586,10 +589,10 @@ export const ChartwellDataLayer = () => {
     getPropertyDlValues,
     isPropertyPage,
     provinces,
-    sitecoreContext.itemId,
-    sitecoreContext.language,
-    sitecoreContext.route?.fields,
-    sitecoreContext.route?.placeholders,
-    sitecoreContext.route?.templateName,
+    routeFields,
+    routePlaceholders,
+    routeTemplateName,
+    sitecoreItemId,
+    sitecoreLanguage,
   ]);
 };
